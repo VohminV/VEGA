@@ -1,0 +1,28 @@
+# Data (не хранится в репозитории)
+dataset/
+*.zip
+
+# Результаты обучения и предсказаний
+runs/
+
+# Веса моделей
+*.pt
+*.pth
+*.onnx
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Логи
+*.log

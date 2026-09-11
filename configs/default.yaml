@@ -1,0 +1,71 @@
+dataset:
+  root: "dataset"
+  images_dir: "images"
+  labels_dir: "labels"
+  data_yaml: "data.yaml"
+  classes: ["drone"]
+
+model:
+  backbone: "custom_small"  # custom_small | resnet18 | resnet34
+  pretrained_backbone: false
+  input_size: 640
+  strides: [4, 8, 16]
+  fpn_channels: 128
+  head_channels: 128
+  num_classes: 1
+
+train:
+  epochs: 100
+  batch_size: 4
+  device: "cuda"
+  lr: 0.0001
+  weight_decay: 0.0001
+  workers: 4
+  amp: true
+  seed: 42
+  save_dir: "runs/train"
+  patience: 20
+  use_focal: true
+  use_scheduler: true
+  warmup_epochs: 5
+  grad_clip: 10.0
+
+augmentation:
+  flip_lr: 0.5
+  flip_ud: 0.0
+  brightness_contrast: 0.2
+  scale_crop: 0.5
+  scale_min: 0.7
+  scale_max: 1.0
+  mosaic_prob: 0.0
+  mixup_prob: 0.0
+
+val:
+  batch_size: 2
+  conf_threshold: 0.15
+  iou_threshold: 0.5
+  use_tiled_inference: true
+  tile_size: 640
+  overlap_ratio: 0.25
+  tile_batch_size: 4
+  class_aware_nms: false
+
+predict:
+  source: "/path/to/input"
+  source_type: "image"  # image | folder | video
+  conf_threshold: 0.15
+  iou_threshold: 0.5
+  use_tiled_inference: true
+  tile_size: 640
+  overlap_ratio: 0.25
+  tile_batch_size: 4
+  class_aware_nms: false
+  save_txt: true
+  save_img: true
+  save_conf: true
+  output_dir: "runs/predict"
+
+small_object:
+  small_min_side_px: 24
+  small_area_fraction: 0.001
+  keep_small_boxes: true
