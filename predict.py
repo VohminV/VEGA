@@ -53,6 +53,16 @@ def build_net(cfg, weights: str):
     return model, device
 
 
+def override_predict_cfg(cfg, conf: float | None, iou: float | None) -> None:
+    """Точечно переопределяет predict-настройки из CLI (не трогая yaml)."""
+    if conf is not None:
+        cfg.predict["conf_threshold"] = float(conf)
+        log.info("config override: predict.conf_threshold = %s", cfg.predict["conf_threshold"])
+    if iou is not None:
+        cfg.predict["iou_threshold"] = float(iou)
+        log.info("config override: predict.iou_threshold = %s", cfg.predict["iou_threshold"])
+
+
 def draw(image_bgr: np.ndarray, preds: np.ndarray, names: list[str], save_conf: bool) -> np.ndarray:
     out = image_bgr.copy()
     h, w = out.shape[:2]
@@ -149,7 +159,7 @@ def predict_folder(cfg, weights: str, source: str) -> None:
     log.info("processed %d images", len(files))
 
 
-def predict_video(cfg, weights: str, source: str) -> None:
+def predict_video(cfg, weights: str, source: str, log_dets: bool = False) -> None:
     model, device = build_net(cfg, weights)
     names = make_names(cfg)
     out_dir = Path(str(cfg.predict["output_dir"]))
@@ -166,8 +176,10 @@ def predict_video(cfg, weights: str, source: str) -> None:
         if not ok:
             break
         _, preds = process_one(model, device, frame, cfg, names)
+        if log_dets:
+            log.info("frame %06d: %d detections", frame_i, len(preds))
         h, w = frame.shape[:2]
-        if bool(cfg.predict["save_txt"]):
+        if len(preds) and bool(cfg.predict["save_txt"]):
             label = out_dir / "video_labels" / f"{name}_{frame_i:06d}.txt"
             save_txt(label, preds, w, h, bool(cfg.predict["save_conf"]))
         if bool(cfg.predict["save_img"]):
@@ -190,15 +202,22 @@ def main() -> None:
     parser.add_argument("--weights", type=str, required=True)
     parser.add_argument("--source", type=str, required=True)
     parser.add_argument("--source_type", type=str, default=None, choices=["image", "folder", "video"])
+    parser.add_argument("--conf", type=float, default=None,
+                        help="Confidence threshold override (по умолчанию из config)")
+    parser.add_argument("--iou", type=float, default=None,
+                        help="NMS IoU threshold override (по умолчанию из config)")
+    parser.add_argument("--log-detections", action="store_true",
+                        help="Писать число детекций на каждый кадр видео")
     args = parser.parse_args()
     cfg = load_config(args.config)
+    override_predict_cfg(cfg, args.conf, args.iou)
     s_type = args.source_type or str(cfg.predict["source_type"])
     if s_type == "image":
         predict_image(cfg, args.weights, args.source)
     elif s_type == "folder":
         predict_folder(cfg, args.weights, args.source)
     elif s_type == "video":
-        predict_video(cfg, args.weights, args.source)
+        predict_video(cfg, args.weights, args.source, log_dets=args.log_detections)
     else:
         raise ValueError(f"unknown source_type: {s_type}")
 

@@ -5,67 +5,151 @@ dataset:
   data_yaml: "data.yaml"
   classes: ["drone"]
 
+  cache_images: false
+  cache_images_mb: 512
+
+  # Дисковый cache только для train.
+  cache_to_disk: true
+  cache_dir: "dataset/.cache"
+  cache_side: 640
+  cache_prebuild: true
+
+
 model:
-  backbone: "custom_small"  # custom_small | resnet18 | resnet34
+  backbone: "custom_small"
   pretrained_backbone: false
+
   input_size: 640
   strides: [4, 8, 16]
+
   fpn_channels: 128
   head_channels: 128
+
   num_classes: 1
+
 
 train:
   epochs: 100
-  batch_size: 4
+  batch_size: 16
+
   device: "cuda"
-  lr: 0.0001
+
+  # Ранее workers>0 вешал CPU/GPU на 0%: DataLoader форкался
+  # после инициализации CUDA (model.to). Исправлено в train.py —
+  # теперь воркеры стартуют через spawn-контекст.
+  workers: 3
+
+  # 0.001 вместо 0.002: на эпохах 20-30 cosine-расписание
+  # держит LR ~0.9 от базы, и при AMP + разреженном positive
+  # (мелкие объекты) такой LR раскачивал обучение до NaN.
+  lr: 0.001
   weight_decay: 0.0001
-  workers: 4
+
   amp: true
   seed: 42
+
   save_dir: "runs/train"
   patience: 20
+
   use_focal: true
+  focal_alpha: 0.75
+  focal_gamma: 1.5
+
+  # 0.75 -> 75% веса на positive, 25% на negative.
+  # ОБЯЗАТЕЛЬНО строго < 1.0: при 1.0 negative loss обнуляется,
+  # объектность вырождается в "объект везде" (obj -> 1e-5,
+  # precision -> ~0.01).
+  obj_pos_weight: 0.75
+  obj_iou_targets: false
+
+  box_loss: "eiou"
+
+  loss_weights:
+    obj: 1.0
+    box: 1.0
+    cls: 1.0
+
   use_scheduler: true
   warmup_epochs: 5
+
   grad_clip: 10.0
+
+  # Подряд идущих батчей с non-finite loss, после которых
+  # обучение аварийно останавливается (не затирая last.pt).
+  # Одиночный NaN — просто скип обновления этого батча.
+  max_non_finite_batches: 5
+
 
 augmentation:
   flip_lr: 0.5
   flip_ud: 0.0
+
   brightness_contrast: 0.2
+
   scale_crop: 0.5
   scale_min: 0.7
   scale_max: 1.0
+
+  # Для текущего tiny-object режима пока отключено.
   mosaic_prob: 0.0
   mixup_prob: 0.0
 
+
 val:
+  # Сейчас train.py фактически валидирует по одному изображению.
+  # Поэтому это значение пока не ускоряет validation.
   batch_size: 2
-  conf_threshold: 0.15
+
+  # Отбрасываем слабые prediction до расчёта метрик.
+  # 0.001 == "считать мусор", ухудшает precision.
+  conf_threshold: 0.10
+
   iou_threshold: 0.5
-  use_tiled_inference: true
+
+  # Для корректной базовой оценки.
+  use_tiled_inference: false
+
   tile_size: 640
   overlap_ratio: 0.25
   tile_batch_size: 4
+
   class_aware_nms: false
+
+  # Validation не нужно гонять после каждого epoch.
+  # Нужна поддержка этого параметра в train.py.
+  interval: 10
+
 
 predict:
   source: "/path/to/input"
-  source_type: "image"  # image | folder | video
-  conf_threshold: 0.15
-  iou_threshold: 0.5
+  source_type: "image"
+
+  # Реальный рабочий порог отдельно от validation.
+  conf_threshold: 0.20
+
+  iou_threshold: 0.45
+
+  # Для больших кадров это важно для маленьких FPV.
   use_tiled_inference: true
+
   tile_size: 640
   overlap_ratio: 0.25
   tile_batch_size: 4
+
   class_aware_nms: false
+
   save_txt: true
   save_img: true
   save_conf: true
+
   output_dir: "runs/predict"
 
+
 small_object:
+  # Объекты меньше 24 px считаем small-object.
   small_min_side_px: 24
+
   small_area_fraction: 0.001
+
+  # Не выбрасывать маленькие GT.
   keep_small_boxes: true
